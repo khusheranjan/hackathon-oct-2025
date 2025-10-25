@@ -1,66 +1,29 @@
-"use client";
-
-import { useState } from "react";
-import type { Message } from "../types";
+import { useRef } from "react";
+import ChatContainer from "../components/home/chatContainer";
+import type { ChatContainerHandle } from "../components/home/chatContainer";
 import Header from "../components/home/header";
-import ChatArea from "../components/home/chatArea";
-import InputArea from "../components/home/inputArea";
 
 export default function ChatInterface() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      content: "Hello! How can I help you today?",
-      role: "assistant",
-      timestamp: new Date(),
-    },
-  ]);
-  const [isLoading, setIsLoading] = useState(false);
-
-  const handleSendMessage = async (content: string) => {
-    // Add user message
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      content,
-      role: "user",
-      timestamp: new Date(),
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
-    setIsLoading(true);
-
-    // TODO: Integrate with API here
-    // Example: const response = await callYourAPI(content)
-    // For now, simulate a response
-    setTimeout(() => {
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content:
-          "This is a placeholder response. Connect your API integration here to enable real responses.",
-        role: "assistant",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, assistantMessage]);
-      setIsLoading(false);
-    }, 1000);
-  };
+  // ref to call imperative methods on ChatContainer
+  const chatRef = useRef<ChatContainerHandle | null>(null);
 
   const handleClearChat = () => {
-    setMessages([
-      {
-        id: "1",
-        content: "Hello! How can I help you today?",
-        role: "assistant",
-        timestamp: new Date(),
-      },
-    ]);
+    chatRef.current?.clearMessages();
   };
 
   return (
-    <div className="flex flex-col h-screen bg-background text-foreground">
+    // page container: full viewport height and column layout
+    <div className="min-h-screen flex flex-col bg-background">
+      {/* pass the clear handler into header */}
       <Header onClearChat={handleClearChat} />
-      <ChatArea messages={messages} isLoading={isLoading} />
-      <InputArea onSendMessage={handleSendMessage} isLoading={isLoading} />
+
+      {/* main area grows to fill remaining viewport height */}
+      <main className="flex-1 w-full">
+        <div className="max-w-4xl mx-auto h-full">
+          {/* attach ref so parent can call clearMessages() */}
+          <ChatContainer ref={chatRef} />
+        </div>
+      </main>
     </div>
   );
 }

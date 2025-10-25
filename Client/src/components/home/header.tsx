@@ -10,7 +10,7 @@ export default function Header({ onClearChat }: HeaderProps) {
   const { theme, toggleTheme } = useTheme();
 
   return (
-    <header className="border-b border-border bg-background">
+    <header className="border-b border-border bg-background fixed left-0 right-0 top-0 z-50">
       <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-linear-to-br from-primary to-primary/60 flex items-center justify-center">

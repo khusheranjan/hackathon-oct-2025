@@ -42,7 +42,7 @@ export default function InputArea({
   };
 
   return (
-    <div className="border-t border-border bg-background">
+    <div className="border-t border-border bg-background fixed left-0 right-0 bottom-0 z-50">
       <div className="max-w-4xl mx-auto px-4 py-4">
         <form onSubmit={handleSubmit} className="flex gap-3">
           <textarea
