@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\"C:\\Users\\loveh\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64\\initexmf.exe\" --admin --force --mklinks)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
