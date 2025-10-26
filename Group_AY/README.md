@@ -1,6 +1,7 @@
 # AI Educational Video Generator
-
 An automated workflow that transforms natural language descriptions into complete educational videos with animations, narration, and synchronization.
+# Youtube link
+https://youtu.be/0rcj_CuoGKI
 
 ## Problem Statement
 
