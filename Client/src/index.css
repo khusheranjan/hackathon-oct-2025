@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: "Inter", "Segoe UI", "Roboto", sans-serif;
+
+  /* Light mode colors */
+  --color-background: #ffffff;
+  --color-foreground: #0f0f0f;
+  --color-primary: #10a37f;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #f0f0f0;
+  --color-secondary-foreground: #0f0f0f;
+  --color-accent: #e5e5e5;
+  --color-muted-foreground: #565869;
+  --color-border: #d1d5db;
+  --color-input: #ffffff;
+
+  /* Dark mode colors - make accent light so hover contrast uses black text */
+  --color-background-dark: #0d0d0d;
+  --color-foreground-dark: #ececf1;
+  --color-primary-dark: #10a37f;
+  --color-primary-foreground-dark: #0d0d0d;
+  --color-secondary-dark: #1a1a1a;
+  --color-secondary-foreground-dark: #ececf1;
+  --color-accent-dark: #e5e5e5; /* changed to light */
+  --color-muted-foreground-dark: #8e8ea0;
+  --color-border-dark: #404050;
+  --color-input-dark: #1a1a1a;
+}
+
+
+@layer base {
+  :root {
+    --background: var(--color-background);
+    --foreground: var(--color-foreground);
+    --primary: var(--color-primary);
+    --primary-foreground: var(--color-primary-foreground);
+    --secondary: var(--color-secondary);
+    --secondary-foreground: var(--color-secondary-foreground);
+    --accent: var(--color-accent);
+    --muted-foreground: var(--color-muted-foreground);
+    --border: var(--color-border);
+    --input: var(--color-input);
+  }
+
+  :root.dark {
+    --background: var(--color-background-dark);
+    --foreground: var(--color-foreground-dark);
+    --primary: var(--color-primary-dark);
+    --primary-foreground: var(--color-primary-foreground-dark);
+    --secondary: var(--color-secondary-dark);
+    --secondary-foreground: var(--color-secondary-foreground-dark);
+    --accent: var(--color-accent-dark);
+    --muted-foreground: var(--color-muted-foreground-dark);
+    --border: var(--color-border-dark);
+    --input: var(--color-input-dark);
+  }
+
+  * {
+    /* If you actually want all elements to have the border color by default, keep this.
+       Otherwise remove to avoid forcing border styles on everything. */
+    --tw-border-opacity: 1;
+    border-color: var(--border);
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+  }
+}
+
+@layer utilities {
+  .bg-background {
+    background-color: var(--background);
+  }
+
+  .text-foreground {
+    color: var(--foreground);
+  }
+
+  .bg-primary {
+    background-color: var(--primary);
+  }
+
+  .text-primary {
+    color: var(--primary);
+  }
+
+  .bg-secondary {
+    background-color: var(--secondary);
+  }
+
+  .text-secondary {
+    color: var(--secondary);
+  }
+
+  .bg-accent {
+    background-color: var(--accent);
+  }
+
+  .text-muted-foreground {
+    color: var(--muted-foreground);
+  }
+
+  .border-border {
+    border-color: var(--border);
+  }
+
+  .bg-input {
+    background-color: var(--input);
+  }
+}
