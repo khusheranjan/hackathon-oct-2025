@@ -118,95 +118,53 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
     return null;
   };
 
-  const handleDownload = async (downloadUrl: string, jobId: string) => {
-    setDownloadError(null);
-    setDownloading(true);
-    setProgress(0);
-
+  const handleDownload = (downloadUrl: string, jobId: string) => {
+    const base = import.meta.env.VITE_URL ?? "";
     try {
-      const resp = await fetch(downloadUrl);
-      if (!resp.ok) {
-        throw new Error(`Server returned ${resp.status} ${resp.statusText}`);
-      }
-
-      // Attempt to stream and show progress if Content-Length is provided
-      const contentLengthHeader = resp.headers.get("Content-Length");
-      const total = contentLengthHeader
-        ? parseInt(contentLengthHeader, 10)
-        : null;
-      const reader = resp.body?.getReader();
-
-      if (!reader) {
-        // fallback to blob
-        const blob = await resp.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = blobUrl;
-        a.download = `video_${jobId}.mp4`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(blobUrl);
-        setProgress(100);
-        setDownloading(false);
-        return;
-      }
-
-      const chunks: BlobPart[] = [];
-      let received = 0;
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value) {
-          chunks.push(value);
-          received += value.byteLength ?? value.length ?? 0;
-          if (total) {
-            setProgress(Math.round((received / total) * 100));
-          } else {
-            // when total unknown, show indeterminate progress by toggling null -> small number
-            setProgress(Math.min(99, (progress ?? 0) + 5));
-          }
-        }
-      }
-
-      // assemble blob
-      const blob = new Blob(chunks, { type: "video/mp4" });
-      const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = blobUrl;
-      a.download = `video_${jobId}.mp4`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(blobUrl);
-
-      setProgress(100);
-    } catch (err: any) {
-      console.error("Download failed", err);
-      setDownloadError(err?.message ?? "Download failed");
-    } finally {
-      setDownloading(false);
-      // keep progress for a short moment so user sees completion
-      setTimeout(() => setProgress(null), 1500);
+      const fullUrl = new URL(downloadUrl, base).toString();
+      window.open(fullUrl, "_blank");
+    } catch (err) {
+      // Fallback: attempt to open the provided string directly
+      console.error("Invalid download URL:", err);
+      window.open(downloadUrl, "_blank");
     }
   };
+
 
   // Render
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-2xl rounded-lg px-4 py-3 group relative ${
-          isUser
+        className={`max-w-2xl rounded-lg px-4 py-3 group relative ${isUser
             ? "bg-primary text-primary-foreground"
             : "bg-secondary text-foreground"
-        }`}
+          }`}
       >
         {Array.isArray(message.content) ? (
           renderTimeline(message.content as TimelineStep[])
         ) : (
           <p className="text-sm leading-relaxed whitespace-pre-wrap">
+            {(() => {
+              const found = extractDownloadUrl(message.content);
+              
+              if (found?.url) {
+                return (
+                  <a
+                    href={`${import.meta.env.VITE_URL}/${found.url}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-500 underline block mt-2"
+                  >
+                    🔗 Download Video
+                  </a>
+                );
+              }
+              return null;
+            })()}
             {message.content}
+            
           </p>
+
         )}
 
         {/* Download button for assistant messages that include an API download path */}

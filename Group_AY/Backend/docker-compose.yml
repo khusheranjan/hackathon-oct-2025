@@ -3,6 +3,7 @@ version: '3.8'
 services:
   video-generator:
     build: .
+    image: ai-video-generator:latest
     container_name: ai-video-generator
     ports:
       - "5000:5000"
@@ -15,18 +16,18 @@ services:
     command: python api_server.py
 
   # Optional: Add a simple web UI
-  web-ui:
-    build:
-      context: .
-      dockerfile: Dockerfile.web
-    container_name: video-generator-ui
-    ports:
-      - "3000:3000"
-    environment:
-      - API_URL=http://video-generator:5000
-    depends_on:
-      - video-generator
-    restart: unless-stopped
+  # web-ui:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.web
+  #   container_name: video-generator-ui
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - API_URL=http://video-generator:5000
+  #   depends_on:
+  #     - video-generator
+  #   restart: unless-stopped
 
 volumes:
   outputs:

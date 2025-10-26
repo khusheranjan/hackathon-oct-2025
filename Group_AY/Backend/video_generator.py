@@ -163,36 +163,22 @@ Return ONLY the script text, no stage directions or timestamps."""
         with open(temp_file, 'w') as f:
             f.write(manim_code)
         
-        # Render with Manim using Docker
+        # Render with Manim directly (we're running inside a container with Manim installed)
         try:
-            # Get absolute paths
-            work_dir = Path.cwd()
-            abs_temp_file = temp_file.resolve()
-            abs_media_dir = (self.output_dir / "manim_media").resolve()
-            rel_temp_file = abs_temp_file.relative_to(work_dir)
-            rel_media_dir = abs_media_dir.relative_to(work_dir)
+            # Create media directory
+            media_dir = self.output_dir / "manim_media"
+            media_dir.mkdir(exist_ok=True)
 
-            # Convert Windows paths to POSIX (forward slashes) for Docker
-            rel_temp_file_posix = rel_temp_file.as_posix()
-            rel_media_dir_posix = rel_media_dir.as_posix()
-
-            # Set environment to prevent Git Bash path conversion on Windows
-            env = os.environ.copy()
-            env['MSYS_NO_PATHCONV'] = '1'
-
+            # Run manim directly - no Docker needed since we're already in the container
             result = subprocess.run([
-                "docker", "run", "--rm",
-                "-v", f"{work_dir}:/manim",
-                "-w", "/manim",
-                "ai-video-generator:latest",
                 "manim",
                 "-qh",  # High quality
                 "--format=mp4",
-                "--media_dir", rel_media_dir_posix,
-                rel_temp_file_posix,
+                "--media_dir", str(media_dir),
+                str(temp_file),
                 "EducationalScene"
             ], capture_output=True, text=True, encoding='utf-8', errors='replace',
-               env=env, check=True)
+               check=True)
             
             # Find the generated video
             video_dir = self.output_dir / "manim_media" / "videos" / f"{output_name}_manim" / "1080p60"

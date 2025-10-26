@@ -84,221 +84,207 @@ const ChatContainer: ForwardRefRenderFunction<ChatContainerHandle, Props> = (
   }));
 
   const sendPrompt = async (description: string) => {
-    if (!description.trim()) return;
+  if (!description.trim()) return;
 
-    const userMsg: Message = {
-      id: uuidv4(),
-      role: "user",
-      content: description,
-      timestamp: new Date().toISOString(),
-    };
+  const userMsg: Message = {
+    id: uuidv4(),
+    role: "user",
+    content: description,
+    timestamp: new Date().toISOString(),
+  };
 
-    // Insert user message
-    setMessages((prev) => [...prev, userMsg]);
+  setMessages((prev) => [...prev, userMsg]);
 
-    // Prepare timeline message and insert
-    const timelineSteps = generateInitialTimeline();
-    const timelineMsg: Message = {
-      id: uuidv4(),
-      role: "timeline",
-      content: timelineSteps,
-      timestamp: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, timelineMsg]);
-    setIsLoading(true);
+  const timelineSteps = generateInitialTimeline();
+  const timelineMsg: Message = {
+    id: uuidv4(),
+    role: "timeline",
+    content: timelineSteps,
+    timestamp: new Date().toISOString(),
+  };
 
-    try {
-      // Call the backend to start a job
-      const resp = await fetch(`${API_BASE_URL}/api/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description }),
-      });
+  setMessages((prev) => [...prev, timelineMsg]);
+  setIsLoading(true);
 
-      if (!resp.ok) {
-        const errText = await resp.text();
-        throw new Error(`Generate API failed: ${errText}`);
-      }
+  try {
+    // 🚀 Start generation
+    const resp = await fetch(`${API_BASE_URL}/api/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ description }),
+    });
 
-      const json = await resp.json();
-      const jobId: string = json.job_id;
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(`Generate API failed: ${errText}`);
+    }
 
-      // Update timeline: queued -> processing
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.role === "timeline"
-            ? {
-                ...m,
-                content: updateTimelineStatus(
-                  m.content as any,
-                  "queued",
-                  "completed"
-                ) as TimelineStep[],
-              }
-            : m
-        )
-      );
+    const json = await resp.json();
+    const jobId: string = json.job_id;
+    localStorage.setItem("job_id", jobId);
 
-      // start polling the job status
-      const poll = async () => {
-        try {
-          const statusResp = await fetch(`${API_BASE_URL}/api/status/${jobId}`);
-          if (!statusResp.ok) {
-            if (statusResp.status === 404) {
-              // job not found
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.role === "timeline"
-                    ? {
-                        ...m,
-                        content: updateTimelineStatus(
-                          m.content as any,
-                          "queued",
-                          "failed",
-                          "Job not found on server"
-                        ) as TimelineStep[],
-                      }
-                    : m
-                )
-              );
-              setIsLoading(false);
+    // Mark queued complete
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.role === "timeline"
+          ? {
+              ...m,
+              content: updateTimelineStatus(
+                m.content as any,
+                "queued",
+                "completed"
+              ) as TimelineStep[],
             }
-            return;
-          }
-          const statusJson = await statusResp.json();
-          const status = statusJson.status;
+          : m
+      )
+    );
 
-          if (status === "queued") {
-            // still queued
-            // already marked queued completed earlier
-          } else if (status === "processing") {
-            // mark first pending step as processing
-            setMessages((prev) =>
-              prev.map((m) => {
-                if (m.role !== "timeline") return m;
-                const steps = [...(m.content as TimelineStep[])];
-                // find first step with status pending and mark previous ones completed
-                let firstPendingIndex = steps.findIndex(
-                  (s) => s.status === "pending"
-                );
-                if (firstPendingIndex === -1) {
-                  // none pending: pick last
-                  firstPendingIndex = steps.length - 1;
-                }
-                // mark all before firstPendingIndex as completed
-                for (let i = 0; i < firstPendingIndex; i++)
-                  steps[i].status = "completed";
-                // set the active one to processing (if not already)
-                steps[firstPendingIndex].status = "processing";
-                return { ...m, content: steps as TimelineStep[] };
-              })
-            );
-          } else if (status === "completed") {
-            // fetch results and mark all completed
-            const results = statusJson.results || {};
-            setMessages((prev) =>
-              prev.map((m) => {
-                if (m.role !== "timeline") return m;
-                const steps = markAllCompleted(m.content as TimelineStep[]);
-                return { ...m, content: steps };
-              })
-            );
-
-            // Add assistant final message with download link if available
-            const assistantContentParts: string[] = [];
-            assistantContentParts.push("Video generation completed.");
-            if (results.final_video) {
-              assistantContentParts.push(
-                `You can download the video here: ${API_BASE_URL}/api/download/${jobId}`
-              );
-            } else {
-              assistantContentParts.push(
-                "No final_video field returned. Check server logs or job results."
-              );
-            }
-
-            const assistantMsg: Message = {
-              id: uuidv4(),
-              role: "assistant",
-              content: assistantContentParts.join("\n\n"),
-              timestamp: new Date().toISOString(),
-            };
-
-            setMessages((prev) => [...prev, assistantMsg]);
-            setIsLoading(false);
-            return; // stop polling
-          } else if (status === "failed") {
-            // mark timeline as failed
+    // 🕒 Poll for job status every 2 seconds
+    const pollInterval = setInterval(async () => {
+      try {
+        const statusResp = await fetch(`${API_BASE_URL}/api/status/${jobId}`);
+        if (!statusResp.ok) {
+          if (statusResp.status === 404) {
             setMessages((prev) =>
               prev.map((m) =>
                 m.role === "timeline"
                   ? {
                       ...m,
-                      content: (m.content as TimelineStep[]).map((s) =>
-                        s.status === "processing"
-                          ? { ...s, status: "failed" }
-                          : s
+                      content: updateTimelineStatus(
+                        m.content as any,
+                        "queued",
+                        "failed",
+                        "Job not found on server"
                       ) as TimelineStep[],
                     }
                   : m
               )
             );
-
-            const errMsg: Message = {
-              id: uuidv4(),
-              role: "assistant",
-              content: `Video generation failed: ${
-                statusJson.error || "Unknown error"
-              }`,
-              timestamp: new Date().toISOString(),
-            };
-            setMessages((prev) => [...prev, errMsg]);
             setIsLoading(false);
-            return;
+            clearInterval(pollInterval);
           }
-        } catch (err) {
-          console.error("Polling error", err);
+          return;
         }
-        // schedule next poll if still loading
-        if (isLoading) {
-          setTimeout(poll, 2000);
-        }
-      };
 
-      // small delay then start polling
-      setTimeout(poll, 1500);
-    } catch (err: any) {
-      console.error("Send prompt error", err);
-      // update timeline to failed
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.role === "timeline"
-            ? {
-                ...m,
-                content: (m.content as TimelineStep[]).map((s) => ({
-                  ...s,
-                  status: "failed",
-                })) as TimelineStep[],
+        const statusJson = await statusResp.json();
+        const status = statusJson.status;
+
+        if (status === "queued" || status === "processing") {
+          // Update timeline progress
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.role !== "timeline") return m;
+              const steps = [...(m.content as TimelineStep[])];
+              const firstPendingIndex = steps.findIndex(
+                (s) => s.status === "pending"
+              );
+
+              if (firstPendingIndex !== -1) {
+                // Mark all before pending as completed
+                for (let i = 0; i < firstPendingIndex; i++) {
+                  steps[i].status = "completed";
+                }
+                // Mark current one as processing
+                steps[firstPendingIndex].status = "processing";
               }
-            : m
-        )
-      );
-      const assistantMsg: Message = {
-        id: uuidv4(),
-        role: "assistant",
-        content: `Failed to start video generation: ${err.message || err}`,
-        timestamp: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, assistantMsg]);
-      setIsLoading(false);
-    }
-  };
+
+              return { ...m, content: steps };
+            })
+          );
+        }
+
+        else if (status === "completed") {
+          const results = statusJson.results || {};
+          clearInterval(pollInterval);
+
+          // Mark all as done
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.role === "timeline"
+                ? { ...m, content: markAllCompleted(m.content as TimelineStep[]) }
+                : m
+            )
+          );
+
+          const assistantMsg: Message = {
+            id: uuidv4(),
+            role: "assistant",
+            content: results.final_video
+              ? `✅ Video generated successfully!\n\n[Download Video](${API_BASE_URL}/api/download/${jobId})`
+              : "✅ Video generated, but no final file found in results.",
+            timestamp: new Date().toISOString(),
+          };
+
+          setMessages((prev) => [...prev, assistantMsg]);
+          setIsLoading(false);
+        }
+
+        else if (status === "failed") {
+          clearInterval(pollInterval);
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.role === "timeline"
+                ? {
+                    ...m,
+                    content: (m.content as TimelineStep[]).map((s) =>
+                      s.status === "processing"
+                        ? { ...s, status: "failed" }
+                        : s
+                    ),
+                  }
+                : m
+            )
+          );
+
+          const errMsg: Message = {
+            id: uuidv4(),
+            role: "assistant",
+            content: `❌ Video generation failed: ${
+              statusJson.error || "Unknown error"
+            }`,
+            timestamp: new Date().toISOString(),
+          };
+          setMessages((prev) => [...prev, errMsg]);
+          setIsLoading(false);
+        }
+      } catch (err) {
+        console.error("Polling error:", err);
+      }
+    }, 2000);
+  } catch (err: any) {
+    console.error("Send prompt error", err);
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.role === "timeline"
+          ? {
+              ...m,
+              content: (m.content as TimelineStep[]).map((s) => ({
+                ...s,
+                status: "failed",
+              })) as TimelineStep[],
+            }
+          : m
+      )
+    );
+
+    const assistantMsg: Message = {
+      id: uuidv4(),
+      role: "assistant",
+      content: `❌ Failed to start video generation: ${err.message || err}`,
+      timestamp: new Date().toISOString(),
+    };
+
+    setMessages((prev) => [...prev, assistantMsg]);
+    setIsLoading(false);
+  }
+};
+
 
   return (
     // Use h-full so the page-level container controls viewport height. This lets sticky/flex behave correctly.
     <div className="flex flex-col h-full mt-16">
       {/* ChatArea grows and scrolls */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto mb-16">
         <ChatArea messages={messages} isLoading={isLoading} />
       </div>
 
