@@ -11,21 +11,13 @@ export type ChatContainerHandle = {
 };
 
 type Props = {};
-
-/**
- * ChatContainer:
- * - Manages messages & loading state
- * - Sends prompt to /api/generate
- * - Polls /api/status/:job_id and updates a timeline message
- *
- * Exposes clearMessages() via ref so a parent Header can clear the chat.
- */
 const ChatContainer: ForwardRefRenderFunction<ChatContainerHandle, Props> = (
   _props,
   ref
 ) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const API_BASE_URL = import.meta.env.VITE_URL;
 
   const generateInitialTimeline = (): TimelineStep[] => {
     const now = new Date().toISOString();
@@ -117,7 +109,7 @@ const ChatContainer: ForwardRefRenderFunction<ChatContainerHandle, Props> = (
 
     try {
       // Call the backend to start a job
-      const resp = await fetch("/api/generate", {
+      const resp = await fetch(`${API_BASE_URL}/api/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ description }),
@@ -150,7 +142,7 @@ const ChatContainer: ForwardRefRenderFunction<ChatContainerHandle, Props> = (
       // start polling the job status
       const poll = async () => {
         try {
-          const statusResp = await fetch(`/api/status/${jobId}`);
+          const statusResp = await fetch(`${API_BASE_URL}/api/status/${jobId}`);
           if (!statusResp.ok) {
             if (statusResp.status === 404) {
               // job not found
@@ -216,9 +208,8 @@ const ChatContainer: ForwardRefRenderFunction<ChatContainerHandle, Props> = (
             const assistantContentParts: string[] = [];
             assistantContentParts.push("Video generation completed.");
             if (results.final_video) {
-              // our backend download route is /api/download/<job_id>
               assistantContentParts.push(
-                `You can download the video here: /api/download/${jobId}`
+                `You can download the video here: ${API_BASE_URL}/api/download/${jobId}`
               );
             } else {
               assistantContentParts.push(
