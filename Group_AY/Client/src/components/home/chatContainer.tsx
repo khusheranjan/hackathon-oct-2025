@@ -1,10 +1,12 @@
-import { forwardRef, useImperativeHandle, useState } from "react";
+import { forwardRef, useImperativeHandle, useState, useEffect } from "react";
 import type { ForwardRefRenderFunction } from "react";
 import { v4 as uuidv4 } from "uuid";
 
 import type { Message, TimelineStep } from "../../types";
 import ChatArea from "./chatArea";
-import InputArea from "./inputArea";
+import InputArea, { type AvatarOptions } from "./inputArea";
+import { useChat } from "../../context/chatContext";
+import { useAuth } from "../../context/authContext";
 
 export type ChatContainerHandle = {
   clearMessages: () => void;
@@ -18,11 +20,33 @@ const ChatContainer: ForwardRefRenderFunction<ChatContainerHandle, Props> = (
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const API_BASE_URL = import.meta.env.VITE_URL;
+  const { activeChat, addMessage } = useChat();
+  const { token } = useAuth();
 
-  const generateInitialTimeline = (): TimelineStep[] => {
+  // Load messages when active chat changes
+  useEffect(() => {
+    if (activeChat && activeChat.messages) {
+      const formattedMessages: Message[] = activeChat.messages.map((msg: any) => ({
+        id: msg.id || uuidv4(),
+        role: msg.role,
+        content: msg.content,
+        timestamp: msg.timestamp,
+      }));
+      setMessages(formattedMessages);
+    } else {
+      setMessages([]);
+    }
+  }, [activeChat?.id]);
+
+  const generateInitialTimeline = (includeAvatar: boolean = false): TimelineStep[] => {
     const now = new Date().toISOString();
-    return [
+    const steps: TimelineStep[] = [
       { key: "queued", title: "Job queued", status: "queued", timestamp: now },
+      {
+        key: "enhancing_prompt",
+        title: "Enhancing prompt for clarity",
+        status: "pending",
+      },
       {
         key: "scene_breakdown",
         title: "Generating scene breakdown",
@@ -46,13 +70,26 @@ const ChatContainer: ForwardRefRenderFunction<ChatContainerHandle, Props> = (
         status: "pending",
       },
       { key: "sync", title: "Syncing animation with audio", status: "pending" },
+    ];
+
+    if (includeAvatar) {
+      steps.push({
+        key: "avatar",
+        title: "Generating and adding avatar",
+        status: "pending",
+      });
+    }
+
+    steps.push(
       {
         key: "add_subtitles",
         title: "Adding subtitles to video",
         status: "pending",
       },
-      { key: "finalizing", title: "Finalizing video", status: "pending" },
-    ];
+      { key: "finalizing", title: "Finalizing video", status: "pending" }
+    );
+
+    return steps;
   };
 
   const updateTimelineStatus = (
@@ -83,7 +120,7 @@ const ChatContainer: ForwardRefRenderFunction<ChatContainerHandle, Props> = (
     },
   }));
 
-  const sendPrompt = async (description: string) => {
+  const sendPrompt = async (description: string, avatarOptions: AvatarOptions) => {
   if (!description.trim()) return;
 
   const userMsg: Message = {
@@ -95,7 +132,13 @@ const ChatContainer: ForwardRefRenderFunction<ChatContainerHandle, Props> = (
 
   setMessages((prev) => [...prev, userMsg]);
 
-  const timelineSteps = generateInitialTimeline();
+  // Save user message to backend
+  await addMessage({
+    role: "user",
+    content: description,
+  });
+
+  const timelineSteps = generateInitialTimeline(avatarOptions.addAvatar);
   const timelineMsg: Message = {
     id: uuidv4(),
     role: "timeline",
@@ -108,13 +151,44 @@ const ChatContainer: ForwardRefRenderFunction<ChatContainerHandle, Props> = (
 
   try {
     // 🚀 Start generation
+    const requestBody = {
+      description,
+      add_avatar: avatarOptions.addAvatar,
+      avatar_position: avatarOptions.avatarPosition,
+      use_simple_avatar: avatarOptions.useSimpleAvatar,
+      enhance_prompt: true,  // Always enhance prompt for better clarity
+    };
+
     const resp = await fetch(`${API_BASE_URL}/api/generate`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ description }),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify(requestBody),
     });
 
     if (!resp.ok) {
+      // Handle subscription limit error
+      if (resp.status === 403) {
+        const errorData = await resp.json();
+        const errorMessage = `⚠️ ${errorData.error || "Subscription limit reached"}\n\n[Upgrade to Pro](${window.location.origin}/pricing) or [Buy Credits](${window.location.origin}/pricing) to continue generating videos.`;
+
+        // Remove timeline message
+        setMessages((prev) => prev.filter((m) => m.role !== "timeline"));
+
+        const assistantMsg: Message = {
+          id: uuidv4(),
+          role: "assistant",
+          content: errorMessage,
+          timestamp: new Date().toISOString(),
+        };
+
+        setMessages((prev) => [...prev, assistantMsg]);
+        setIsLoading(false);
+        return;
+      }
+
       const errText = await resp.text();
       throw new Error(`Generate API failed: ${errText}`);
     }
@@ -206,17 +280,25 @@ const ChatContainer: ForwardRefRenderFunction<ChatContainerHandle, Props> = (
             )
           );
 
+          const assistantContent = results.final_video
+            ? `✅ Video generated successfully!\n\n[Download Video](${API_BASE_URL}/api/download/${jobId})`
+            : "✅ Video generated, but no final file found in results.";
+
           const assistantMsg: Message = {
             id: uuidv4(),
             role: "assistant",
-            content: results.final_video
-              ? `✅ Video generated successfully!\n\n[Download Video](${API_BASE_URL}/api/download/${jobId})`
-              : "✅ Video generated, but no final file found in results.",
+            content: assistantContent,
             timestamp: new Date().toISOString(),
           };
 
           setMessages((prev) => [...prev, assistantMsg]);
           setIsLoading(false);
+
+          // Save assistant message to backend
+          await addMessage({
+            role: "assistant",
+            content: assistantContent,
+          });
         }
 
         else if (status === "failed") {

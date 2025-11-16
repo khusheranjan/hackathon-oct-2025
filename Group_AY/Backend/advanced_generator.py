@@ -111,10 +111,32 @@ Requirements:
 - Use engaging colors and animations
 - Make sure total video length matches sum of scene durations
 
+VERY IMPORTANT - PREVENTING OVERLAPPING FRAMES:
+- Before introducing a new scene, ALWAYS remove previous objects
+- Use FadeOut() to remove objects: self.play(FadeOut(obj1), FadeOut(obj2), ...)
+- Or use self.play(*[FadeOut(mob) for mob in self.mobjects]) to clear everything
+- NEVER let objects from previous scenes remain visible when showing new content
+- Each scene should start with a clean slate
+
 Important timing tips:
 - Use run_time parameter in animations: self.play(FadeIn(obj), run_time=2)
 - Use self.wait(duration) for pauses
 - Chain animations appropriately
+- Always fade out objects before moving to the next scene
+
+Example:
+```python
+# Scene 1
+title = Text("Scene 1")
+self.play(Write(title), run_time=2)
+self.wait(1)
+# Clear before next scene
+self.play(FadeOut(title), run_time=1)
+
+# Scene 2 (clean slate)
+shape = Circle()
+self.play(Create(shape), run_time=2)
+```
 
 Return ONLY the Python code, no explanations."""
 

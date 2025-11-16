@@ -1,6 +1,25 @@
 version: '3.8'
 
 services:
+  mongodb:
+    image: mongo:7.0
+    container_name: eduvideo-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USERNAME:-admin}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD:-admin123}
+      - MONGO_INITDB_DATABASE=eduvideo
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    restart: unless-stopped
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   video-generator:
     build: .
     image: ai-video-generator:latest
@@ -9,26 +28,39 @@ services:
       - "5000:5000"
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - DID_API_KEY=${DID_API_KEY}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - JWT_SECRET=${JWT_SECRET}
+      - MONGODB_URI=mongodb://${MONGO_USERNAME:-admin}:${MONGO_PASSWORD:-admin123}@mongodb:27017/eduvideo?authSource=admin
     volumes:
       - ./outputs:/app/outputs
       - ./examples:/app/examples
     restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
     command: python api_server.py
 
-  # Optional: Add a simple web UI
-  # web-ui:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile.web
-  #   container_name: video-generator-ui
-  #   ports:
-  #     - "3000:3000"
-  #   environment:
-  #     - API_URL=http://video-generator:5000
-  #   depends_on:
-  #     - video-generator
-  #   restart: unless-stopped
+  # Frontend client
+  client:
+    build:
+      context: ../Client
+      dockerfile: Dockerfile
+      args:
+        - VITE_URL=
+        - VITE_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+    container_name: video-generator-client
+    ports:
+      - "3000:80"
+    depends_on:
+      - video-generator
+    restart: unless-stopped
 
 volumes:
   outputs:
+    driver: local
+  mongodb_data:
+    driver: local
+  mongodb_config:
     driver: local

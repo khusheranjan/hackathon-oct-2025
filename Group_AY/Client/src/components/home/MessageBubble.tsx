@@ -9,9 +9,9 @@ interface MessageBubbleProps {
 
 export default function MessageBubble({ message }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false);
-  const [downloading, setDownloading] = useState(false);
-  const [progress, setProgress] = useState<number | null>(null);
-  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [downloading] = useState(false);
+  const [progress] = useState<number | null>(null);
+  const [downloadError] = useState<string | null>(null);
 
   const handleCopy = () => {
     if (typeof message.content === "string") {
@@ -118,7 +118,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
     return null;
   };
 
-  const handleDownload = (downloadUrl: string, jobId: string) => {
+  const handleDownload = (downloadUrl: string, _jobId: string) => {
     const base = import.meta.env.VITE_URL ?? "";
     try {
       const fullUrl = new URL(downloadUrl, base).toString();

@@ -10,10 +10,12 @@ import subprocess
 from pathlib import Path
 from openai import OpenAI
 from elevenlabs import ElevenLabs
-from typing import Dict, List
+from typing import Dict, List, Optional
 import tempfile
 import shutil
 from dotenv import load_dotenv
+from avatar_generator import AvatarGenerator, SimpleAvatarGenerator, overlay_avatar_on_video
+from prompt_enhancer import PromptEnhancer
 
 # Load environment variables from .env file
 load_dotenv()
@@ -79,15 +81,31 @@ CRITICAL REQUIREMENTS:
 - Use regular Tex() only for plain text without math symbols
 - Available shapes: Circle, Square, Rectangle, Triangle, Polygon, Line, Arrow
 
-Example of proper timing:
+VERY IMPORTANT - PREVENTING OVERLAPPING FRAMES:
+- Before introducing a new scene/concept, ALWAYS remove previous objects
+- Use FadeOut() to remove objects: self.play(FadeOut(obj1), FadeOut(obj2), ...)
+- Or use self.play(*[FadeOut(mob) for mob in self.mobjects]) to clear everything
+- NEVER let objects from previous scenes remain visible when showing new content
+- Each major concept should start with a clean slate
+
+Example of proper scene transitions:
 ```python
-# Show text for 5 seconds
-self.play(Write(text), run_time=3)
+# Scene 1: Show title
+title = Text("Let's understand Pythagorean theorem")
+self.play(Write(title), run_time=3)
 self.wait(2)
 
-# Transform slowly
-self.play(Transform(obj1, obj2), run_time=4)
-self.wait(3)
+# Clear the title before showing next scene
+self.play(FadeOut(title), run_time=1)
+self.wait(0.5)
+
+# Scene 2: Show triangle (previous objects are gone)
+triangle = Polygon([-3,-2,0], [3,-2,0], [-3,2,0])
+self.play(Create(triangle), run_time=2)
+self.wait(2)
+
+# Clear triangle before next scene
+self.play(FadeOut(triangle), run_time=1)
 ```
 
 Return ONLY the Python code, no explanations or instructions whatsoever."""
@@ -287,55 +305,151 @@ Return ONLY the script text, no stage directions or timestamps."""
 
         return output_path
     
-    def generate_video(self, description: str, project_name: str = "educational_video") -> Dict[str, str]:
+    def generate_video(
+        self,
+        description: str,
+        project_name: str = "educational_video",
+        add_avatar: bool = False,
+        avatar_position: str = "bottom-right",
+        use_simple_avatar: bool = True,
+        enhance_prompt: bool = True
+    ) -> Dict[str, str]:
         """
         Complete workflow: description -> final video
+
+        Args:
+            description: Natural language description of educational content
+            project_name: Name for the project files
+            add_avatar: Whether to add an avatar to the video
+            avatar_position: Position of avatar (bottom-right, bottom-left, top-right, top-left)
+            use_simple_avatar: Use simple static avatar (True) or D-ID talking avatar (False)
+            enhance_prompt: Whether to enhance the user prompt for better clarity (True by default)
         """
         print(f"🎬 Starting video generation for: {project_name}")
-        print(f"📝 Description: {description}\n")
-        
-        # Step 1: Generate Manim code
+        print(f"📝 Original Description: {description}\n")
+
+        # Step 0: Enhance prompt (optional but recommended)
+        enhanced_description = description
+        prompt_metadata = {}
+
+        if enhance_prompt:
+            print("0️⃣ Enhancing prompt for better clarity...")
+            try:
+                enhancer = PromptEnhancer(self.client.api_key)
+                enhancement_result = enhancer.enhance_prompt(description)
+                enhanced_description = enhancement_result["enhanced"]
+                prompt_metadata = {
+                    "original_prompt": description,
+                    "enhanced_prompt": enhanced_description,
+                    "title": enhancement_result["title"],
+                    "learning_objectives": enhancement_result["learning_objectives"]
+                }
+                print(f"✅ Prompt enhanced!")
+                print(f"   Title: {enhancement_result['title']}")
+                print(f"   Enhanced: {enhanced_description[:100]}...\n")
+            except Exception as e:
+                print(f"⚠️ Prompt enhancement failed: {e}")
+                print("Continuing with original prompt...\n")
+                enhanced_description = description
+
+        # Step 1: Generate Manim code (using enhanced description)
         print("1️⃣ Generating Manim animation code...")
-        manim_code = self.generate_manim_code(description)
+        manim_code = self.generate_manim_code(enhanced_description)
         manim_file = self.output_dir / f"{project_name}_manim.py"
         with open(manim_file, 'w') as f:
             f.write(manim_code)
         print(f"✅ Manim code saved to {manim_file}\n")
-        
-        # Step 2: Generate script
+
+        # Step 2: Generate script (using enhanced description)
         print("2️⃣ Generating narration script...")
-        script = self.generate_script(description, manim_code)
+        script = self.generate_script(enhanced_description, manim_code)
         script_file = self.output_dir / f"{project_name}_script.txt"
         with open(script_file, 'w') as f:
             f.write(script)
         print(f"✅ Script saved to {script_file}\n")
-        
+
         # Step 3: Generate audio
         print("3️⃣ Converting script to speech...")
         audio_file = self.output_dir / f"{project_name}_audio.mp3"
         self.generate_audio(script, str(audio_file))
         print(f"✅ Audio saved to {audio_file}\n")
-        
+
         # Step 4: Render Manim animation
         print("4️⃣ Rendering Manim animation (this may take a while)...")
         video_file = self.render_manim_animation(manim_code, project_name)
         print(f"✅ Animation rendered to {video_file}\n")
-        
+
         # Step 5: Sync video and audio
         print("5️⃣ Syncing animation with narration...")
-        final_video = self.output_dir / f"{project_name}_final.mp4"
-        self.sync_video_and_audio(video_file, str(audio_file), str(final_video))
-        print(f"✅ Final video saved to {final_video}\n")
-        
+        synced_video = self.output_dir / f"{project_name}_synced.mp4"
+        self.sync_video_and_audio(video_file, str(audio_file), str(synced_video))
+        print(f"✅ Video synced\n")
+
+        # Step 6: Add avatar if requested
+        final_video = synced_video
+        avatar_video_path = None
+
+        if add_avatar:
+            print("6️⃣ Adding avatar to video...")
+            try:
+                if use_simple_avatar:
+                    # Use simple static avatar with DALL-E
+                    simple_gen = SimpleAvatarGenerator()
+                    avatar_image = self.output_dir / f"{project_name}_avatar.png"
+
+                    print("  🎨 Generating avatar image...")
+                    simple_gen.create_avatar_image(str(avatar_image), style="professional")
+
+                    # Get audio duration for avatar video
+                    audio_duration = self.get_audio_duration(str(audio_file))
+
+                    avatar_video_path = self.output_dir / f"{project_name}_avatar_video.mp4"
+                    print("  🎥 Creating avatar video...")
+                    simple_gen.create_static_avatar_video(
+                        str(avatar_image),
+                        audio_duration,
+                        str(avatar_video_path)
+                    )
+                else:
+                    # Use D-ID talking avatar (requires D-ID API key)
+                    avatar_gen = AvatarGenerator()
+                    avatar_video_path = self.output_dir / f"{project_name}_avatar_video.mp4"
+                    avatar_gen.create_avatar_video(str(audio_file), str(avatar_video_path))
+
+                # Overlay avatar on main video
+                final_video = self.output_dir / f"{project_name}_final.mp4"
+                print("  🎬 Overlaying avatar on video...")
+                overlay_avatar_on_video(
+                    str(synced_video),
+                    str(avatar_video_path),
+                    str(final_video),
+                    position=avatar_position,
+                    size=0.35  # 35% of video height for better visibility
+                )
+                print(f"✅ Avatar added successfully\n")
+
+            except Exception as e:
+                print(f"⚠️ Avatar generation failed: {e}")
+                print("Continuing without avatar...\n")
+                final_video = synced_video
+
         print("🎉 Video generation complete!")
-        
-        return {
+
+        result = {
             "manim_code": str(manim_file),
             "script": str(script_file),
             "audio": str(audio_file),
             "animation": video_file,
+            "synced_video": str(synced_video),
+            "avatar_video": str(avatar_video_path) if avatar_video_path else None,
             "final_video": str(final_video)
         }
+
+        # Add prompt metadata if enhancement was used
+        if prompt_metadata:
+            result["prompt_metadata"] = prompt_metadata
+
+        return result
 
 
 def main():
